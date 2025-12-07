@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sprite Magic — Sprite Cleaner & Slicer</title>
+
+  <!-- styles -->
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- JSZip (for export) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
+</head>
+<body>
+  <main class="container">
+    <header class="header">
+      <div class="header-left">
+        <h1>Sprite Magic</h1>
+        <p class="tagline">Quickly remove backgrounds, crop and slice sprite sheets — export for Unity.</p>
+      </div>
+      <div class="header-actions">
+        <div class="segmented" role="tablist" aria-label="Editor mode">
+          <button id="modeSingleBtn" class="seg-btn active" role="tab" aria-selected="true">Single Sprite</button>
+          <button id="modeSheetBtn" class="seg-btn" role="tab" aria-selected="false">Sprite Sheet</button>
+        </div>
+        <button id="resetBtn" class="btn secondary">Reset</button>
+      </div>
+    </header>
+
+    <!-- UPLOAD -->
+    <section class="card" aria-labelledby="uploadTitle">
+      <h2 id="uploadTitle">1. Upload</h2>
+      <div id="drop-zone" class="drop-zone" tabindex="0" aria-label="Drop image here or click to upload">
+        <p id="drop-text" class="drop-text">Drop image here or click to upload</p>
+        <input id="file-input" type="file" accept="image/*" aria-label="Choose image file">
+        <!-- original canvas: displays the uploaded image, never modified -->
+        <canvas id="original-canvas"></canvas>
+      </div>
+    </section>
+
+    <!-- EDITING -->
+    <section class="card" aria-labelledby="editTitle">
+      <h2 id="editTitle">2. Edit</h2>
+
+      <div class="controls-row">
+        <div class="control-group">
+          <div class="tool">
+            <button id="bgBtn" class="btn">Remove Background</button>
+            <span class="info">i</span>
+            <div class="tooltip">Removes background pixels based on the selected tolerance value.</div>
+          </div>
+
+          <div class="tool">
+            <button id="cleanBtn" class="btn">Clean Sprite (BG → Crop)</button>
+            <span class="info">i</span>
+            <div class="tooltip">Runs Remove Background then Auto Crop to create a tight sprite crop.</div>
+          </div>
+
+          <div class="tool">
+            <button id="cropBtn" class="btn">Auto Crop</button>
+            <span class="info">i</span>
+            <div class="tooltip">Crops to the visible sprite pixels (alpha-based). Falls back to color-sampling when needed.</div>
+          </div>
+
+          <div class="tool" id="tool-slice">
+            <button id="sliceBtn" class="btn">Auto Slice</button>
+            <span class="info">i</span>
+            <div class="tooltip">Slices the current preview into a grid of frames for export.</div>
+          </div>
+        </div>
+
+        <!-- tolerance slider removed; detection uses internal heuristic -->
+        <div class="control-group small">
+          <div class="hint">Sprite sheet detection uses automatic heuristics.</div>
+        </div>
+      </div>
+
+      <div class="controls-row">
+        <button id="undoBtn" class="btn secondary">Undo</button>
+        <div class="hint">Undo reverts the last edit (BG/Crop/Slice preview).</div>
+      </div>
+    </section>
+
+    <!-- PREVIEW -->
+    <section class="card" aria-labelledby="previewTitle">
+      <h2 id="previewTitle">3. Preview</h2>
+
+      <!-- live editing canvas shows the result of the current operation -->
+      <div id="preview-container" class="preview-container" aria-live="polite">
+        <canvas id="preview-canvas" class="preview-canvas" style="display:none;"></canvas>
+        <canvas id="overlay-canvas" class="overlay-canvas" style="display:none;pointer-events:none;"></canvas>
+        <div id="slices-container" class="slices-container" style="display:none;"></div>
+        <!-- Slice panel (appears when user clicks Auto Slice) -->
+        <aside id="slice-panel" class="slice-panel" aria-hidden="true" style="display:none;">
+          <h3>Slice Options</h3>
+          <div class="preview-info">Preview: <span id="previewSize">—</span></div>
+          <div class="slice-modes">
+            <button id="modeByTile" class="seg-btn small active">By Tile Size</button>
+            <button id="modeByGrid" class="seg-btn small">By Rows/Cols</button>
+            <button id="modeAutoDetect" class="btn small">Auto Detect</button>
+          </div>
+          <div id="slice-by-tile" class="slice-mode-panel">
+            <label>Tile Width: <input id="tileWidth" type="number" min="1" value="32"></label>
+            <label>Tile Height: <input id="tileHeight" type="number" min="1" value="32"></label>
+            <label>Tile Padding (px): <input id="tilePadding" type="number" min="0" value="0"></label>
+            <div class="slice-actions">
+              <button id="applyTileSlice" class="btn primary">Apply</button>
+              <button id="cancelSlice" class="btn secondary">Cancel</button>
+            </div>
+          </div>
+          <div id="slice-by-grid" class="slice-mode-panel" style="display:none;">
+            <label>Columns: <input id="gridCols" type="number" min="1" value="4"></label>
+            <label>Rows: <input id="gridRows" type="number" min="1" value="4"></label>
+            <label>Tile Padding (px): <input id="gridPadding" type="number" min="0" value="0"></label>
+            <div class="slice-actions">
+              <button id="applyGridSlice" class="btn primary">Apply</button>
+              <button id="cancelSlice2" class="btn secondary">Cancel</button>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- EXPORT -->
+    <section class="card" aria-labelledby="exportTitle">
+      <h2 id="exportTitle">4. Export</h2>
+
+      <div class="controls-row">
+        <button id="downloadBtn" class="btn primary">Download ZIP</button>
+        <div class="export-note">ZIP includes cropped image or slices + metadata (Unity-ready).</div>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <small>Built with vanilla JS • Keep your images private — processing happens in your browser.</small>
+    </footer>
+  </main>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
