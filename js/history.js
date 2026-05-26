@@ -1,7 +1,7 @@
 // js/history.js
 // History / Undo helpers
 
-import { previewCanvas, previewCtx, undoBtn } from "./dom.js";
+import { previewCanvas, previewCtx, slicesContainer, undoBtn } from "./dom.js";
 import { state } from "./state.js";
 
 export function updateUndoUI() {
@@ -10,22 +10,37 @@ export function updateUndoUI() {
 
 export function pushHistory() {
   if (!previewCanvas.width || !previewCanvas.height) return;
-  const snapshot = previewCtx.getImageData(
-    0,
-    0,
-    previewCanvas.width,
-    previewCanvas.height
-  );
-  state.historyStack.push(snapshot);
+  state.historyStack.push({
+    imageData: previewCtx.getImageData(
+      0,
+      0,
+      previewCanvas.width,
+      previewCanvas.height
+    ),
+    lastOperation: state.lastOperation,
+    frames: [...state.frames],
+    lastCroppedDataURL: state.lastCroppedDataURL,
+    lastMetadata: state.lastMetadata ? { ...state.lastMetadata } : null,
+  });
   updateUndoUI();
 }
 
 export function popHistory() {
   if (state.historyStack.length === 0) return;
-  const data = state.historyStack.pop();
-  previewCanvas.width = data.width;
-  previewCanvas.height = data.height;
-  previewCtx.putImageData(data, 0, 0);
+  const snap = state.historyStack.pop();
+  previewCanvas.width = snap.imageData.width;
+  previewCanvas.height = snap.imageData.height;
+  previewCtx.putImageData(snap.imageData, 0, 0);
+
+  state.lastOperation = snap.lastOperation;
+  state.frames = snap.frames;
+  state.lastCroppedDataURL = snap.lastCroppedDataURL;
+  state.lastMetadata = snap.lastMetadata;
+
+  // Always restore to canvas view — slice thumbnails in DOM are stale after undo
+  previewCanvas.style.display = "block";
+  slicesContainer.style.display = "none";
+
   updateUndoUI();
 }
 
@@ -34,7 +49,6 @@ export function clearHistory() {
   updateUndoUI();
 }
 
-// Bind Undo button
 if (undoBtn) {
   undoBtn.addEventListener("click", () => {
     popHistory();

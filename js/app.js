@@ -9,3 +9,5 @@ import "./loading.js";
 import "./imageOps.js";
 import "./slicing.js";
 import "./export.js";
+import "./animator.js";
+import "./gifExport.js";

@@ -10,6 +10,8 @@
 
   <!-- JSZip (for export) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.0/jszip.min.js"></script>
+  <!-- gif.js (for GIF export, worker must be same-origin) -->
+  <script src="vendor/gif.js"></script>
 </head>
 <body>
   <main class="container">
@@ -50,13 +52,13 @@
             <div class="tooltip">Removes background pixels based on the selected tolerance value.</div>
           </div>
 
-          <div class="tool">
+          <div class="tool" id="tool-clean">
             <button id="cleanBtn" class="btn">Clean Sprite (BG → Crop)</button>
             <span class="info">i</span>
             <div class="tooltip">Runs Remove Background then Auto Crop to create a tight sprite crop.</div>
           </div>
 
-          <div class="tool">
+          <div class="tool" id="tool-crop">
             <button id="cropBtn" class="btn">Auto Crop</button>
             <span class="info">i</span>
             <div class="tooltip">Crops to the visible sprite pixels (alpha-based). Falls back to color-sampling when needed.</div>
@@ -69,9 +71,15 @@
           </div>
         </div>
 
-        <!-- tolerance slider removed; detection uses internal heuristic -->
         <div class="control-group small">
-          <div class="hint">Sprite sheet detection uses automatic heuristics.</div>
+          <div class="tolerance-control">
+            <div class="tolerance-row">
+              <span class="tolerance-label">BG Tolerance</span>
+              <strong id="toleranceDisplay">12</strong>
+            </div>
+            <input id="toleranceSlider" type="range" min="1" max="80" value="12" class="tolerance-slider">
+            <div class="hint">Higher removes more. Adjust if background isn't fully cleaned.</div>
+          </div>
         </div>
       </div>
 
@@ -89,6 +97,27 @@
       <div id="preview-container" class="preview-container" aria-live="polite">
         <canvas id="preview-canvas" class="preview-canvas" style="display:none;"></canvas>
         <canvas id="overlay-canvas" class="overlay-canvas" style="display:none;pointer-events:none;"></canvas>
+
+        <!-- Animation Preview Player (shown after slicing) -->
+        <div id="anim-player" class="anim-player" style="display:none;">
+          <div class="anim-header">
+            <span class="anim-label">Animation Preview</span>
+            <span id="animFrameCounter" class="anim-frame-counter">Frame 1 / 1</span>
+          </div>
+          <div class="anim-canvas-wrap">
+            <canvas id="anim-canvas"></canvas>
+          </div>
+          <div class="anim-controls">
+            <button id="animPrevBtn" class="btn small" title="Previous frame">&#9664;</button>
+            <button id="animPlayBtn" class="btn small primary" title="Play / Pause">&#9654; Play</button>
+            <button id="animNextBtn" class="btn small" title="Next frame">&#9654;|</button>
+            <div class="anim-fps-wrap">
+              <input id="animFpsInput" type="range" min="1" max="60" value="12" class="anim-fps-slider">
+              <span id="animFpsDisplay">12</span>&nbsp;FPS
+            </div>
+          </div>
+        </div>
+
         <div id="slices-container" class="slices-container" style="display:none;"></div>
         <!-- Slice panel (appears when user clicks Auto Slice) -->
         <aside id="slice-panel" class="slice-panel" aria-hidden="true" style="display:none;">
@@ -127,7 +156,8 @@
 
       <div class="controls-row">
         <button id="downloadBtn" class="btn primary">Download ZIP</button>
-        <div class="export-note">ZIP includes cropped image or slices + metadata (Unity-ready).</div>
+        <button id="gifBtn" class="btn">Export GIF</button>
+        <div class="export-note">ZIP includes PNG frames + metadata (Unity-ready). GIF uses the current animation FPS.</div>
       </div>
     </section>
 

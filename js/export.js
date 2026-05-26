@@ -19,10 +19,12 @@ if (downloadBtn) {
         JSON.stringify(state.lastMetadata, null, 2)
       );
       const content = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(content);
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(content);
+      a.href = url;
       a.download = `${state.currentFileName}_sprites.zip`;
       a.click();
+      URL.revokeObjectURL(url);
     } else if (state.lastOperation === "sliced" && state.frames.length > 0) {
       const zip = new JSZip();
       for (let i = 0; i < state.frames.length; i++) {
@@ -52,10 +54,12 @@ if (downloadBtn) {
       );
 
       const content = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(content);
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(content);
+      a.href = url;
       a.download = `${state.currentFileName}_slices.zip`;
       a.click();
+      URL.revokeObjectURL(url);
     } else {
       alert("Please perform an operation (Crop or Slice) before exporting.");
     }

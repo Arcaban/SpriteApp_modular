@@ -11,10 +11,13 @@ import {
   modeSingleBtn,
   modeSheetBtn,
   toolSlice,
+  toolClean,
+  toolCrop,
   resetBtn,
 } from "./dom.js";
 import { state, DEFAULT_TOLERANCE } from "./state.js";
 import { clearHistory, updateUndoUI } from "./history.js";
+import { startAnimation, stopAnimation } from "./animator.js";
 
 export function showOriginalCanvas() {
   dropText.style.display = "none";
@@ -22,6 +25,7 @@ export function showOriginalCanvas() {
 }
 
 export function showPreviewCanvas() {
+  stopAnimation();
   previewCanvas.style.display = "block";
   slicesContainer.style.display = "none";
 }
@@ -29,6 +33,7 @@ export function showPreviewCanvas() {
 export function showSlicesPreview() {
   previewCanvas.style.display = "none";
   slicesContainer.style.display = "flex";
+  startAnimation(state.frames);
 }
 
 export function ensurePreviewReady() {
@@ -105,12 +110,16 @@ export function setMode(mode) {
     modeSheetBtn.classList.remove("active");
     modeSheetBtn.setAttribute("aria-selected", "false");
     if (toolSlice) toolSlice.style.display = "none";
+    if (toolClean) toolClean.style.display = "inline-block";
+    if (toolCrop) toolCrop.style.display = "inline-block";
   } else {
     modeSheetBtn.classList.add("active");
     modeSheetBtn.setAttribute("aria-selected", "true");
     modeSingleBtn.classList.remove("active");
     modeSingleBtn.setAttribute("aria-selected", "false");
     if (toolSlice) toolSlice.style.display = "inline-block";
+    if (toolClean) toolClean.style.display = "none";
+    if (toolCrop) toolCrop.style.display = "none";
   }
 }
 
@@ -122,6 +131,7 @@ export function clearPreviews() {
 }
 
 export function resetAll() {
+  stopAnimation();
   clearHistory();
   clearPreviews();
 

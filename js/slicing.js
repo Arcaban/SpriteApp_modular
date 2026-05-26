@@ -53,7 +53,6 @@ export async function performAutoSlice() {
     const bgB = data[2];
     let bgCount = 0;
 
-    // count near-equal opaque pixels
     for (let i = 0; i < data.length; i += 4) {
       const r = data[i];
       const g = data[i + 1];
@@ -69,7 +68,6 @@ export async function performAutoSlice() {
       }
     }
 
-    // if significant fraction of image looks "fake opaque bg", convert those to alpha=0
     if (bgCount > w * h * 0.18) {
       for (let i = 0; i < data.length; i += 4) {
         const r = data[i];
@@ -95,7 +93,6 @@ export async function performAutoSlice() {
   const imgData = previewCtx.getImageData(0, 0, w, h);
   const data = imgData.data;
 
-  // background ref (transparent / top-left pixel fallback)
   const bgRef =
     state.originalBgColor || { r: data[0], g: data[1], b: data[2] };
 
@@ -118,172 +115,11 @@ export async function performAutoSlice() {
     const base = y * w;
     for (let x = 0; x < w; x++) {
       const pos = base + x;
-      const i = pos * 4;
-      mask[pos] = isContentAt(i) ? 1 : 0;
+      mask[pos] = isContentAt(pos * 4) ? 1 : 0;
     }
   }
 
-  // ---------- Connected components ----------
-  const labels = new Int32Array(w * h); // 0 = unlabeled
-  const comps = []; // {minX,minY,maxX,maxY,area}
-  let label = 0;
-  const stack = [];
-
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const pos = y * w + x;
-      if (!mask[pos] || labels[pos]) continue;
-      label++;
-      let minX = x;
-      let maxX = x;
-      let minY = y;
-      let maxY = y;
-      let area = 0;
-      stack.push(pos);
-      labels[pos] = label;
-      while (stack.length) {
-        const p = stack.pop();
-        const px = p % w;
-        const py = Math.floor(p / w);
-        area++;
-        if (px < minX) minX = px;
-        if (px > maxX) maxX = px;
-        if (py < minY) minY = py;
-        if (py > maxY) maxY = py;
-        // neighbors 4-connected
-        if (px > 0) {
-          const q = p - 1;
-          if (!labels[q] && mask[q]) {
-            labels[q] = label;
-            stack.push(q);
-          }
-        }
-        if (px < w - 1) {
-          const q = p + 1;
-          if (!labels[q] && mask[q]) {
-            labels[q] = label;
-            stack.push(q);
-          }
-        }
-        if (py > 0) {
-          const q = p - w;
-          if (!labels[q] && mask[q]) {
-            labels[q] = label;
-            stack.push(q);
-          }
-        }
-        if (py < h - 1) {
-          const q = p + w;
-          if (!labels[q] && mask[q]) {
-            labels[q] = label;
-            stack.push(q);
-          }
-        }
-      }
-      comps.push({ minX, minY, maxX, maxY, area });
-    }
-  }
-
-  // ---------- Filter components by size (median-based) ----------
-  if (comps.length > 0) {
-    const areas = comps.map((c) => c.area).sort((a, b) => a - b);
-    const medianArea = areas[Math.floor(areas.length / 2)] || areas[0];
-    const minArea = Math.max(8, Math.round(medianArea * 0.2));
-    const candidates = comps.filter((c) => c.area >= minArea);
-    const compCandidates = candidates.length
-      ? candidates
-      : comps.filter((c) => c.area >= 6);
-
-    if (compCandidates.length >= 2) {
-      compCandidates.sort((a, b) => a.minY - b.minY || a.minX - b.minX);
-
-      // show overlay for user feedback (client-scaled)
-      if (overlayCtx && overlayCanvas && previewContainer) {
-        const previewRect = previewCanvas.getBoundingClientRect();
-        const containerRect = previewContainer.getBoundingClientRect();
-        const cssW = Math.max(1, Math.round(previewRect.width));
-        const cssH = Math.max(1, Math.round(previewRect.height));
-        overlayCanvas.style.left =
-          Math.round(previewRect.left - containerRect.left) + "px";
-        overlayCanvas.style.top =
-          Math.round(previewRect.top - containerRect.top) + "px";
-        overlayCanvas.style.width = cssW + "px";
-        overlayCanvas.style.height = cssH + "px";
-        overlayCanvas.width = cssW;
-        overlayCanvas.height = cssH;
-        overlayCanvas.style.display = "block";
-        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-        const scaleX = overlayCanvas.width / Math.max(1, previewCanvas.width);
-        const scaleY = overlayCanvas.height / Math.max(1, previewCanvas.height);
-        overlayCtx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
-        overlayCtx.strokeStyle = "rgba(37,99,235,0.95)";
-        overlayCtx.lineWidth = 2 / Math.max(scaleX, scaleY);
-        for (const c of compCandidates) {
-          overlayCtx.strokeRect(
-            c.minX - 1,
-            c.minY - 1,
-            c.maxX - c.minX + 1 + 2,
-            c.maxY - c.minY + 1 + 2
-          );
-        }
-        await new Promise((r) => setTimeout(r, OVERLAY_SHOW_MS));
-        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-        overlayCanvas.style.display = "none";
-        overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
-      }
-
-      // build slices (apply padding, clamp)
-      slicesContainer.innerHTML = "";
-      state.frames = [];
-      for (const c of compCandidates) {
-        const sx = Math.max(0, c.minX - padding);
-        const sy = Math.max(0, c.minY - padding);
-        const sw = Math.min(
-          w - sx,
-          c.maxX - c.minX + 1 + padding * 2
-        );
-        const sh = Math.min(
-          h - sy,
-          c.maxY - c.minY + 1 + padding * 2
-        );
-
-        const sliceCanvas = document.createElement("canvas");
-        sliceCanvas.width = sw;
-        sliceCanvas.height = sh;
-        const sliceCtx = sliceCanvas.getContext("2d");
-        sliceCtx.drawImage(
-          previewCanvas,
-          sx,
-          sy,
-          sw,
-          sh,
-          0,
-          0,
-          sw,
-          sh
-        );
-
-        const container = document.createElement("div");
-        container.className = "slice-item";
-        container.appendChild(sliceCanvas);
-        slicesContainer.appendChild(container);
-
-        state.frames.push({
-          x: sx,
-          y: sy,
-          w: sw,
-          h: sh,
-          dataURL: sliceCanvas.toDataURL("image/png"),
-        });
-      }
-
-      state.lastOperation = "sliced";
-      showSlicesPreview();
-      return;
-    }
-  }
-
-  // ---------- GRID DETECTION (existing heuristic) ----------
+  // ---------- Grid helpers ----------
   function detectGridFromMask(maskArr, imgW, imgH) {
     const colSums = new Uint32Array(imgW);
     const rowSums = new Uint32Array(imgH);
@@ -355,8 +191,6 @@ export async function performAutoSlice() {
     };
   }
 
-  const gridInfo = detectGridFromMask(mask, w, h);
-
   function validateAndSliceGrid(tileW, tileH) {
     const cols = Math.max(1, Math.floor(w / tileW));
     const rows = Math.max(1, Math.floor(h / tileH));
@@ -397,17 +231,7 @@ export async function performAutoSlice() {
         sliceCanvas.width = sw;
         sliceCanvas.height = sh;
         const sliceCtx = sliceCanvas.getContext("2d");
-        sliceCtx.drawImage(
-          previewCanvas,
-          sx,
-          sy,
-          sw,
-          sh,
-          0,
-          0,
-          sw,
-          sh
-        );
+        sliceCtx.drawImage(previewCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
         const container = document.createElement("div");
         container.className = "slice-item";
         container.appendChild(sliceCanvas);
@@ -426,30 +250,247 @@ export async function performAutoSlice() {
     return true;
   }
 
-  if (gridInfo && (gridInfo.inferredX || gridInfo.inferredY)) {
-    if (gridInfo.inferredX && gridInfo.inferredY) {
-      const tileW = gridInfo.inferredX.tile;
-      const tileH = gridInfo.inferredY.tile;
-      let ok = validateAndSliceGrid(tileW, tileH);
-      if (!ok) {
-        for (let dw = -2; dw <= 2 && !ok; dw++) {
-          for (let dh = -2; dh <= 2 && !ok; dh++) {
-            if (dw === 0 && dh === 0) continue;
-            ok = validateAndSliceGrid(
-              Math.max(1, tileW + dw),
-              Math.max(1, tileH + dh)
-            );
+  // ---------- GRID DETECTION FIRST (handles labeled/structured sheets) ----------
+  const gridInfo = detectGridFromMask(mask, w, h);
+
+  if (gridInfo && gridInfo.inferredX && gridInfo.inferredY) {
+    const tileW = gridInfo.inferredX.tile;
+    const tileH = gridInfo.inferredY.tile;
+    let ok = validateAndSliceGrid(tileW, tileH);
+    if (!ok) {
+      for (let dw = -2; dw <= 2 && !ok; dw++) {
+        for (let dh = -2; dh <= 2 && !ok; dh++) {
+          if (dw === 0 && dh === 0) continue;
+          ok = validateAndSliceGrid(
+            Math.max(1, tileW + dw),
+            Math.max(1, tileH + dh)
+          );
+        }
+      }
+    }
+    if (ok) return;
+  }
+
+  // ---------- Connected components (irregular / non-grid sheets) ----------
+  const labels = new Int32Array(w * h);
+  const comps = [];
+  let label = 0;
+  const stack = [];
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const pos = y * w + x;
+      if (!mask[pos] || labels[pos]) continue;
+      label++;
+      let minX = x;
+      let maxX = x;
+      let minY = y;
+      let maxY = y;
+      let area = 0;
+      stack.push(pos);
+      labels[pos] = label;
+      while (stack.length) {
+        const p = stack.pop();
+        const px = p % w;
+        const py = Math.floor(p / w);
+        area++;
+        if (px < minX) minX = px;
+        if (px > maxX) maxX = px;
+        if (py < minY) minY = py;
+        if (py > maxY) maxY = py;
+        // neighbors 4-connected
+        if (px > 0) {
+          const q = p - 1;
+          if (!labels[q] && mask[q]) {
+            labels[q] = label;
+            stack.push(q);
+          }
+        }
+        if (px < w - 1) {
+          const q = p + 1;
+          if (!labels[q] && mask[q]) {
+            labels[q] = label;
+            stack.push(q);
+          }
+        }
+        if (py > 0) {
+          const q = p - w;
+          if (!labels[q] && mask[q]) {
+            labels[q] = label;
+            stack.push(q);
+          }
+        }
+        if (py < h - 1) {
+          const q = p + w;
+          if (!labels[q] && mask[q]) {
+            labels[q] = label;
+            stack.push(q);
           }
         }
       }
-      if (ok) return;
-    } else if (gridInfo.inferredX) {
+      comps.push({ minX, minY, maxX, maxY, area });
+    }
+  }
+
+  if (comps.length > 0) {
+    // Filter 1: minimum bounding box dimensions — removes thin letters and single-pixel noise
+    const MIN_DIM = Math.max(6, Math.round(Math.min(w, h) * 0.015));
+    let candidates = comps.filter(
+      (c) => c.maxX - c.minX + 1 >= MIN_DIM && c.maxY - c.minY + 1 >= MIN_DIM
+    );
+    if (candidates.length < 2) candidates = [...comps];
+
+    // Filter 2: gap-based bimodal size filter — separates text labels from sprite frames.
+    // Sorts by area and looks for a large jump (≥3×) between consecutive sizes, which
+    // indicates two distinct populations (e.g. letters vs sprites). Falls back to
+    // median-based filter when no clear gap exists.
+    if (candidates.length > 2) {
+      const sorted = [...candidates].sort((a, b) => a.area - b.area);
+      let maxGapRatio = 0;
+      let gapIdx = -1;
+      for (let i = 1; i < sorted.length; i++) {
+        const ratio = sorted[i].area / Math.max(1, sorted[i - 1].area);
+        if (ratio > maxGapRatio) {
+          maxGapRatio = ratio;
+          gapIdx = i;
+        }
+      }
+      if (maxGapRatio >= 2.5 && gapIdx !== -1) {
+        const threshold = sorted[gapIdx].area;
+        const filtered = candidates.filter((c) => c.area >= threshold);
+        if (filtered.length >= 2) candidates = filtered;
+      } else {
+        const areas = sorted.map((c) => c.area);
+        const medianArea = areas[Math.floor(areas.length / 2)];
+        const minArea = Math.max(8, Math.round(medianArea * 0.3));
+        const filtered = candidates.filter((c) => c.area >= minArea);
+        if (filtered.length >= 2) candidates = filtered;
+      }
+    }
+
+    // Filter 3: colorfulness — sprites have colored pixels, label text is typically
+    // monochrome (pure black). Only applied when it meaningfully reduces the set.
+    if (candidates.length > 2) {
+      const colorful = candidates.filter((c) => {
+        let coloredCount = 0;
+        let opaqueCount = 0;
+        const x1 = Math.min(w - 1, c.maxX);
+        const y1 = Math.min(h - 1, c.maxY);
+        for (let y = c.minY; y <= y1; y++) {
+          for (let x = c.minX; x <= x1; x++) {
+            const i = (y * w + x) * 4;
+            if (data[i + 3] < 16) continue;
+            opaqueCount++;
+            const r = data[i], g = data[i + 1], b = data[i + 2];
+            const maxDiff = Math.max(
+              Math.abs(r - g),
+              Math.abs(r - b),
+              Math.abs(g - b)
+            );
+            if (maxDiff > 25) coloredCount++;
+          }
+        }
+        return opaqueCount > 0 && coloredCount / opaqueCount > 0.08;
+      });
+      if (colorful.length >= 2 && colorful.length < candidates.length) {
+        candidates = colorful;
+      }
+    }
+
+    if (candidates.length >= 2) {
+      candidates.sort((a, b) => a.minY - b.minY || a.minX - b.minX);
+
+      // show overlay for user feedback (client-scaled)
+      if (overlayCtx && overlayCanvas && previewContainer) {
+        const previewRect = previewCanvas.getBoundingClientRect();
+        const containerRect = previewContainer.getBoundingClientRect();
+        const cssW = Math.max(1, Math.round(previewRect.width));
+        const cssH = Math.max(1, Math.round(previewRect.height));
+        overlayCanvas.style.left =
+          Math.round(previewRect.left - containerRect.left) + "px";
+        overlayCanvas.style.top =
+          Math.round(previewRect.top - containerRect.top) + "px";
+        overlayCanvas.style.width = cssW + "px";
+        overlayCanvas.style.height = cssH + "px";
+        overlayCanvas.width = cssW;
+        overlayCanvas.height = cssH;
+        overlayCanvas.style.display = "block";
+        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        const scaleX = overlayCanvas.width / Math.max(1, previewCanvas.width);
+        const scaleY = overlayCanvas.height / Math.max(1, previewCanvas.height);
+        overlayCtx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
+        overlayCtx.strokeStyle = "rgba(37,99,235,0.95)";
+        overlayCtx.lineWidth = 2 / Math.max(scaleX, scaleY);
+        for (const c of candidates) {
+          overlayCtx.strokeRect(
+            c.minX - 1,
+            c.minY - 1,
+            c.maxX - c.minX + 1 + 2,
+            c.maxY - c.minY + 1 + 2
+          );
+        }
+        await new Promise((r) => setTimeout(r, OVERLAY_SHOW_MS));
+        overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        overlayCanvas.style.display = "none";
+        overlayCtx.setTransform(1, 0, 0, 1, 0, 0);
+      }
+
+      // Normalize all frames to the same dimensions so Unity animations don't jitter.
+      // Each sprite is centered within the uniform canvas.
+      let maxFrameW = 0;
+      let maxFrameH = 0;
+      for (const c of candidates) {
+        const fw = Math.min(w, c.maxX - c.minX + 1 + padding * 2);
+        const fh = Math.min(h, c.maxY - c.minY + 1 + padding * 2);
+        if (fw > maxFrameW) maxFrameW = fw;
+        if (fh > maxFrameH) maxFrameH = fh;
+      }
+
+      slicesContainer.innerHTML = "";
+      state.frames = [];
+      for (const c of candidates) {
+        const sx = Math.max(0, c.minX - padding);
+        const sy = Math.max(0, c.minY - padding);
+        const sw = Math.min(w - sx, c.maxX - c.minX + 1 + padding * 2);
+        const sh = Math.min(h - sy, c.maxY - c.minY + 1 + padding * 2);
+
+        const sliceCanvas = document.createElement("canvas");
+        sliceCanvas.width = maxFrameW;
+        sliceCanvas.height = maxFrameH;
+        const sliceCtx = sliceCanvas.getContext("2d");
+        const offX = Math.floor((maxFrameW - sw) / 2);
+        const offY = Math.floor((maxFrameH - sh) / 2);
+        sliceCtx.drawImage(previewCanvas, sx, sy, sw, sh, offX, offY, sw, sh);
+
+        const container = document.createElement("div");
+        container.className = "slice-item";
+        container.appendChild(sliceCanvas);
+        slicesContainer.appendChild(container);
+
+        state.frames.push({
+          x: sx,
+          y: sy,
+          w: maxFrameW,
+          h: maxFrameH,
+          dataURL: sliceCanvas.toDataURL("image/png"),
+        });
+      }
+
+      state.lastOperation = "sliced";
+      showSlicesPreview();
+      return;
+    }
+  }
+
+  // ---------- Single-axis grid fallback ----------
+  if (gridInfo) {
+    if (gridInfo.inferredX && !gridInfo.inferredY) {
       const tileW = gridInfo.inferredX.tile;
       for (let possibleRows = 2; possibleRows <= 12; possibleRows++) {
         const tileH = Math.round(h / possibleRows);
         if (validateAndSliceGrid(tileW, tileH)) return;
       }
-    } else if (gridInfo.inferredY) {
+    } else if (!gridInfo.inferredX && gridInfo.inferredY) {
       const tileH = gridInfo.inferredY.tile;
       for (let possibleCols = 2; possibleCols <= 12; possibleCols++) {
         const tileW = Math.round(w / possibleCols);
@@ -524,17 +565,7 @@ export async function performAutoSlice() {
         sliceCanvas.width = sw;
         sliceCanvas.height = sh;
         const sliceCtx = sliceCanvas.getContext("2d");
-        sliceCtx.drawImage(
-          previewCanvas,
-          sx,
-          sy,
-          sw,
-          sh,
-          0,
-          0,
-          sw,
-          sh
-        );
+        sliceCtx.drawImage(previewCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
         const container = document.createElement("div");
         container.className = "slice-item";
         container.appendChild(sliceCanvas);
@@ -820,16 +851,14 @@ if (modeAutoDetectBtn) {
 
 if (applyTileSliceBtn) {
   applyTileSliceBtn.addEventListener("click", () => {
-    const tileW = Math.max(
-      1,
-      parseInt(tileWidthInput.value, 10) || 32
-    );
-    const tileH = Math.max(
-      1,
-      parseInt(tileHeightInput.value, 10) || 32
+    const tileW = Math.max(1, parseInt(tileWidthInput.value, 10) || 32);
+    const tileH = Math.max(1, parseInt(tileHeightInput.value, 10) || 32);
+    const pad = Math.max(
+      0,
+      parseInt((tilePaddingInput && tilePaddingInput.value) || 0, 10)
     );
     closeSlicePanel();
-    performManualTileSlice(tileW, tileH);
+    performManualTileSlice(tileW, tileH, pad);
   });
 }
 
@@ -837,8 +866,12 @@ if (applyGridSliceBtn) {
   applyGridSliceBtn.addEventListener("click", () => {
     const cols = Math.max(1, parseInt(gridColsInput.value, 10) || 1);
     const rows = Math.max(1, parseInt(gridRowsInput.value, 10) || 1);
+    const pad = Math.max(
+      0,
+      parseInt((gridPaddingInput && gridPaddingInput.value) || 0, 10)
+    );
     closeSlicePanel();
-    performRowsColsSlice(cols, rows);
+    performRowsColsSlice(cols, rows, pad);
   });
 }
 
@@ -850,7 +883,7 @@ if (sliceBtn) {
 }
 
 // Manual tile slicing
-export async function performManualTileSlice(tileW, tileH) {
+export async function performManualTileSlice(tileW, tileH, tilePad = 0) {
   if (!ensurePreviewReady()) return alert("Load an image first.");
   pushHistory();
   const w = previewCanvas.width;
@@ -878,10 +911,12 @@ export async function performManualTileSlice(tileW, tileH) {
   const rows = [];
   const ccount = Math.max(1, Math.floor(w / tileW));
   const rcount = Math.max(1, Math.floor(h / tileH));
+  state.lastGridCols = ccount;
+  state.lastGridRows = rcount;
   for (let x = 0; x < ccount; x++)
-    cols.push({ start: x * tileW, width: tileW });
+    cols.push({ start: x * tileW + tilePad, width: tileW - tilePad * 2 });
   for (let y = 0; y < rcount; y++)
-    rows.push({ start: y * tileH, height: tileH });
+    rows.push({ start: y * tileH + tilePad, height: tileH - tilePad * 2 });
 
   slicesContainer.innerHTML = "";
   state.frames = [];
@@ -933,7 +968,7 @@ export async function performManualTileSlice(tileW, tileH) {
   showSlicesPreview();
 }
 
-export async function performRowsColsSlice(colsCount, rowsCount) {
+export async function performRowsColsSlice(colsCount, rowsCount, tilePad = 0) {
   if (!ensurePreviewReady()) return alert("Load an image first.");
   pushHistory();
   const w = previewCanvas.width;
@@ -964,9 +999,9 @@ export async function performRowsColsSlice(colsCount, rowsCount) {
   state.lastGridCols = colsCount;
   state.lastGridRows = rowsCount;
   for (let x = 0; x < colsCount; x++)
-    cols.push({ start: x * tileW, width: tileW });
+    cols.push({ start: x * tileW + tilePad, width: tileW - tilePad * 2 });
   for (let y = 0; y < rowsCount; y++)
-    rows.push({ start: y * tileH, height: tileH });
+    rows.push({ start: y * tileH + tilePad, height: tileH - tilePad * 2 });
 
   slicesContainer.innerHTML = "";
   state.frames = [];

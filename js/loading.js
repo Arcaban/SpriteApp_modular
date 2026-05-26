@@ -22,7 +22,9 @@ export function loadImage(file) {
     file.name.split(".").slice(0, -1).join(".") || "sprite";
 
   const img = new Image();
+  const objectURL = URL.createObjectURL(file);
   img.onload = () => {
+    URL.revokeObjectURL(objectURL);
     // size ORIGINAL canvas to image's natural size (never changes)
     originalCanvas.width = img.naturalWidth;
     originalCanvas.height = img.naturalHeight;
@@ -39,7 +41,7 @@ export function loadImage(file) {
     showPreviewCanvas();
     updateUndoUI();
   };
-  img.src = URL.createObjectURL(file);
+  img.src = objectURL;
 }
 
 // Drop zone listeners

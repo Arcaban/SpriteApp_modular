@@ -22,6 +22,8 @@ export const slicesContainer = document.getElementById("slices-container");
 export const modeSingleBtn = document.getElementById("modeSingleBtn");
 export const modeSheetBtn = document.getElementById("modeSheetBtn");
 export const toolSlice = document.getElementById("tool-slice");
+export const toolClean = document.getElementById("tool-clean");
+export const toolCrop = document.getElementById("tool-crop");
 
 // overlay canvas for visualizing detection (optional)
 export const overlayCanvas = document.getElementById("overlay-canvas");
