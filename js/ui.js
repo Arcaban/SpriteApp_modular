@@ -166,7 +166,9 @@ export function resetAll() {
 if (modeSingleBtn && modeSheetBtn) {
   modeSingleBtn.addEventListener("click", () => setMode("single"));
   modeSheetBtn.addEventListener("click", () => setMode("sheet"));
-  setMode(state.currentMode);
+  const initialMode = state.currentMode;
+  state.currentMode = null;
+  setMode(initialMode);
 }
 
 if (resetBtn) {
