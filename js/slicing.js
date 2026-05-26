@@ -657,7 +657,8 @@ export function closeSlicePanel() {
   if (!slicePanel || !previewContainer) return;
   slicePanel.style.position = "fixed";
   slicePanel.style.right = "20px";
-  slicePanel.style.top = "120px";
+  slicePanel.style.top = "50%";
+  slicePanel.style.transform = "translateY(-50%)";
   slicePanel.style.width = "260px";
   slicePanel.style.zIndex = "999";
 
